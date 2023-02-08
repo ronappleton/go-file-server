@@ -1,5 +1,3 @@
-# Golang Docker Base
+# Golang Image Server
 
-This is a simple golang (1.19) docker image using cosmtrek/air for hot reloading.
-
-Continuous development - yum!
+Super simple image server, reads a folder structure, caches the images, serves them from the cache.
