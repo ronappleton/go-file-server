@@ -123,7 +123,7 @@ func trimmedPath(pathParts []string, needle string) string {
 		}
 	}
 
-	return strings.Join(append(pathParts[:0], pathParts[idx:]...), "/")
+	return strings.Join(append(pathParts[:0], pathParts[idx+1:]...), "/")
 }
 
 func (fileCache *FileCache) GetFile(key string, urlPath string) (*File, error) {
