@@ -3,135 +3,116 @@ package filecache
 import (
 	"errors"
 	"fmt"
-	"github.com/gabriel-vasile/mimetype"
-	"github.com/gookit/goutil/dump"
-	"github.com/radovskyb/watcher"
-	"github.com/segmentio/fasthash/fnv1a"
+	"github.com/fsnotify/fsnotify"
+	"github.com/ronappleton/golang-docker-base/files"
 	"os"
-	"strconv"
-	"strings"
 )
 
-var mimeTypes = []string{
-	"image/jpeg",
-	"image/bmp",
-	"image/gif",
-	"image/png",
-	"image/vnd",
-}
-
-type File struct {
-	key      string
-	name     string
-	data     string
-	mimetype string
-	filepath string
-	urlPath  string
-}
-
 type FileCache struct {
-	Add    chan *File
-	Remove chan *File
-	Files  map[string]*File
+	Add    chan *files.File
+	Remove chan *files.File
+	Find   chan *FileCacheReader
+	Files  map[string]*files.File
+}
+
+type FileCacheReader struct {
+	Key           string
+	UrlPath       string
+	ReturnChannel chan *files.File
+}
+
+func NewFileCacheReader(key string, urlPath string) *FileCacheReader {
+	return &FileCacheReader{
+		Key:           key,
+		UrlPath:       urlPath,
+		ReturnChannel: make(chan *files.File),
+	}
+}
+
+func (fileCacheReader *FileCacheReader) CloseReturnChannel() {
+	close(fileCacheReader.ReturnChannel)
 }
 
 func NewFileCache() *FileCache {
 	return &FileCache{
-		Add:    make(chan *File),
-		Remove: make(chan *File),
-		Files:  make(map[string]*File),
+		Add:    make(chan *files.File),
+		Remove: make(chan *files.File),
+		Find:   make(chan *FileCacheReader),
+		Files:  make(map[string]*files.File),
 	}
 }
 
 func (fileCache *FileCache) Start() {
-
 	for {
 		select {
 		case file := <-fileCache.Add:
-			dump.P(file)
+			fileCache.Files[file.Key] = file
+			fmt.Println("File added: " + file.FilePath)
 			break
 		case file := <-fileCache.Remove:
-			dump.P(file)
+			delete(fileCache.Files, file.Key)
+			fmt.Println("File removed: " + file.FilePath)
+			break
+		case fileCacheReader := <-fileCache.Find:
+			if fileCacheReader.Key != "" {
+				if file, ok := fileCache.Files[fileCacheReader.Key]; ok {
+					fileCacheReader.ReturnChannel <- file
+					break
+				}
+			}
+
+			if fileCacheReader.UrlPath != "" {
+				for _, file := range fileCache.Files {
+					if file.UrlPath == fileCacheReader.UrlPath {
+						fileCacheReader.ReturnChannel <- file
+						break
+					}
+				}
+			}
+
+			fileCacheReader.ReturnChannel <- &files.File{}
 			break
 		}
 	}
 }
 
-func (file *File) Add(fileCache *FileCache) {
-	fileCache.Files[file.key] = file
-}
-
-func (file *File) Remove(fileCache *FileCache) {
-	delete(fileCache.Files, file.key)
-}
-
-func (fileCache *FileCache) ProcessFileEvent(event watcher.Event) {
-	mimeType, _ := mimetype.DetectFile(event.Path)
-	if !contains(mimeTypes, mimeType.String()) {
+func (fileCache *FileCache) ProcessFileEvent(event fsnotify.Event) {
+	fmt.Println("FileWatcher event fired: " + event.String())
+	_, err := files.GetMimeType(event.Name)
+	if err != nil {
+		fmt.Println("Unrecognised MimeType, returning...")
 		return
 	}
 
-	if event.Op == watcher.Create {
-		file := createFile(event, mimeType.String())
-		fileCache.Files[file.key] = &file
-		dump.P(file.key, file.urlPath, file.mimetype, file.name, file.filepath)
+	// Create events are send when files are added and after the renaming of a file.
+	if event.Has(fsnotify.Create) {
+		fmt.Println("FileWatcher event: CREATE")
+		file := files.CreateFile(event.Name)
+		fileCache.Add <- &file
 	}
 
-	if event.Op == watcher.Remove {
-
-	}
-
-	if event.Op == watcher.Rename || event.Op == watcher.Move {
-		fmt.Println(event.Op)
-		fmt.Println("event string:" + event.String())
-	}
-}
-
-func contains(s []string, str string) bool {
-	for _, v := range s {
-		if v == str {
-			return true
+	// When fsnotify sends a rename event, it actually sends the old filename and not the new one,
+	// so we use that to remove from cache as it also sends a following create event for
+	// the new filename.
+	if event.Has(fsnotify.Remove) || event.Has(fsnotify.Rename) {
+		fmt.Println("FileWatcher event: REMOVE || RENAME")
+		for _, file := range fileCache.Files {
+			if file.FilePath == event.Name {
+				fileCache.Remove <- file
+			}
 		}
 	}
 
-	return false
-}
-
-func createFile(event watcher.Event, mimeType string) File {
-	data, _ := os.ReadFile(event.Path)
-
-	return File{
-		key:      strconv.FormatUint(fnv1a.HashString64(event.Path), 10),
-		name:     event.Name(),
-		data:     string(data),
-		mimetype: mimeType,
-		filepath: event.Path,
-		urlPath:  getUrlPath(event.Path),
-	}
-}
-
-func getUrlPath(path string) string {
-	pathParts := strings.Split(path, "/")
-	return trimmedPath(pathParts, "images")
-}
-
-func trimmedPath(pathParts []string, needle string) string {
-	var idx = 0
-	for index, str := range pathParts {
-		if str == needle {
-			idx = index
+	// Chmod event can be sent on deleting a file (linux), so before we remove it from cache
+	// we check the file has actually gone.
+	if event.Has(fsnotify.Chmod) {
+		fmt.Println("FileWatcher event: CHMOD")
+		if _, err := os.Stat(event.Name); err != nil && errors.Is(err, os.ErrNotExist) {
+			for _, file := range fileCache.Files {
+				if file.FilePath == event.Name {
+					fileCache.Remove <- file
+				}
+			}
 		}
 	}
-
-	return strings.Join(append(pathParts[:0], pathParts[idx+1:]...), "/")
-}
-
-func (fileCache *FileCache) GetFile(key string, urlPath string) (*File, error) {
-	for _, file := range fileCache.Files {
-		if file.key == key || file.urlPath == urlPath {
-			return file, nil
-		}
-	}
-
-	return nil, errors.New("unable to locate File")
 }

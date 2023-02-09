@@ -1,44 +1,66 @@
 package filewatcher
 
 import (
-	"github.com/radovskyb/watcher"
+	"fmt"
+	"github.com/fsnotify/fsnotify"
 	"github.com/ronappleton/golang-docker-base/filecache"
-	"log"
+	"github.com/ronappleton/golang-docker-base/files"
 	"os"
 	"path/filepath"
-	"time"
 )
 
-var fileWatcher *watcher.Watcher
+var watcher *fsnotify.Watcher
+var fileCache *filecache.FileCache
 
-func Watch(fileCache *filecache.FileCache) {
-	fileWatcher = watcher.New()
-	defer fileWatcher.Close()
-
-	fileWatcher.SetMaxEvents(1)
-	fileWatcher.FilterOps(watcher.Rename, watcher.Move, watcher.Create, watcher.Remove)
+func Watch(fCache *filecache.FileCache) {
+	fileCache = fCache
+	watcher, _ = fsnotify.NewWatcher()
+	defer watcher.Close()
 
 	ex, _ := os.Executable()
 	exPath := filepath.Dir(ex)
 
-	if err := fileWatcher.AddRecursive(exPath + "/images"); err != nil {
-		log.Fatalln(err)
+	if err := filepath.Walk(exPath+"/images", watchDir); err != nil {
+		fmt.Println("ERROR", err)
 	}
+
+	done := make(chan bool)
 
 	go func() {
 		for {
 			select {
-			case event := <-fileWatcher.Event:
+			// watch for events
+			case event := <-watcher.Events:
 				fileCache.ProcessFileEvent(event)
-			case err := <-fileWatcher.Error:
-				log.Fatalln(err)
-			case <-fileWatcher.Closed:
-				return
+				break
+			case err := <-watcher.Errors:
+				fmt.Println("ERROR", err)
 			}
 		}
 	}()
 
-	if err := fileWatcher.Start(time.Millisecond * 100); err != nil {
-		log.Fatalln(err)
+	<-done
+}
+
+func filterFiles(data map[string]os.FileInfo) map[string]os.FileInfo {
+	filtered := make(map[string]os.FileInfo, 0)
+
+	for path, file := range data {
+		if !file.IsDir() {
+			filtered[path] = file
+		}
 	}
+
+	return filtered
+}
+
+func watchDir(path string, fi os.FileInfo, err error) error {
+	if fi.Mode().IsDir() {
+		return watcher.Add(path)
+	} else {
+		file := files.CreateFile(path)
+		fileCache.Add <- &file
+	}
+
+	return nil
 }
