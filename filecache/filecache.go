@@ -9,36 +9,36 @@ import (
 )
 
 type FileCache struct {
-	Add    chan *files.File
-	Remove chan *files.File
-	Find   chan *FileCacheReader
-	Files  map[string]*files.File
+	Add       chan *files.File
+	Remove    chan *files.File
+	FindByKey chan *FileFinder
+	FindByUrl chan *FileFinder
+	Files     map[string]*files.File
 }
 
-type FileCacheReader struct {
-	Key           string
-	UrlPath       string
+type FileFinder struct {
+	Find          string
 	ReturnChannel chan *files.File
 }
 
-func NewFileCacheReader(key string, urlPath string) *FileCacheReader {
-	return &FileCacheReader{
-		Key:           key,
-		UrlPath:       urlPath,
+func NewFileFinder(find string) *FileFinder {
+	return &FileFinder{
+		Find:          find,
 		ReturnChannel: make(chan *files.File),
 	}
 }
 
-func (fileCacheReader *FileCacheReader) CloseReturnChannel() {
-	close(fileCacheReader.ReturnChannel)
+func (fileFinder *FileFinder) CloseReturnChannel() {
+	close(fileFinder.ReturnChannel)
 }
 
 func NewFileCache() *FileCache {
 	return &FileCache{
-		Add:    make(chan *files.File),
-		Remove: make(chan *files.File),
-		Find:   make(chan *FileCacheReader),
-		Files:  make(map[string]*files.File),
+		Add:       make(chan *files.File),
+		Remove:    make(chan *files.File),
+		FindByKey: make(chan *FileFinder),
+		FindByUrl: make(chan *FileFinder),
+		Files:     make(map[string]*files.File),
 	}
 }
 
@@ -53,24 +53,24 @@ func (fileCache *FileCache) Start() {
 			delete(fileCache.Files, file.Key)
 			fmt.Println("File removed: " + file.FilePath)
 			break
-		case fileCacheReader := <-fileCache.Find:
-			if fileCacheReader.Key != "" {
-				if file, ok := fileCache.Files[fileCacheReader.Key]; ok {
-					fileCacheReader.ReturnChannel <- file
+		case fileFinder := <-fileCache.FindByKey:
+			if file, ok := fileCache.Files[fileFinder.Find]; ok {
+				fileFinder.ReturnChannel <- file
+				break
+			}
+
+			fileFinder.ReturnChannel <- &files.File{}
+			break
+		case fileFinder := <-fileCache.FindByUrl:
+			for _, file := range fileCache.Files {
+				if file.UrlPath == fileFinder.Find {
+					fileFinder.ReturnChannel <- file
 					break
 				}
+				break
 			}
 
-			if fileCacheReader.UrlPath != "" {
-				for _, file := range fileCache.Files {
-					if file.UrlPath == fileCacheReader.UrlPath {
-						fileCacheReader.ReturnChannel <- file
-						break
-					}
-				}
-			}
-
-			fileCacheReader.ReturnChannel <- &files.File{}
+			fileFinder.ReturnChannel <- &files.File{}
 			break
 		}
 	}
