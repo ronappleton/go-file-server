@@ -9,6 +9,11 @@ Features:
  - Etag for client caching
  - gzip compression
  - brotli compression
+ 
+To Come:
+ 
+ - TLS/SSL
+ - Proper daemonisation
 
 ## Usage
 
