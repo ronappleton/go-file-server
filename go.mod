@@ -1,11 +1,10 @@
-module github.com/ronappleton/golang-docker-base
+module github.com/ronappleton/go-file-server
 
 go 1.20
 
 require (
 	github.com/gabriel-vasile/mimetype v1.4.1
 	github.com/gofiber/fiber/v2 v2.42.0
-	github.com/namsral/flag v1.7.4-pre
 )
 
 require (
