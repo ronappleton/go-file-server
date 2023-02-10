@@ -6,6 +6,7 @@ All this server does is serve static assets directly from the file system.
 
 Features:
 
+ - Server response caching
  - Etag for client caching
  - gzip compression
  - brotli compression
@@ -26,7 +27,8 @@ Ensure go is installed (>1.16)
 Go file server also accepts five optional arguments:
 
 - `--port=80`
-- `--filesPath=/your/folder/path`
+- `--storagePath=/your/folder/path`
+- `--storageFolder=files`
 - `--production=true`
 - `--domain=www.example.com`
 - `--email=admin@example.com`
