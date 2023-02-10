@@ -9,11 +9,7 @@ Features:
  - Etag for client caching
  - gzip compression
  - brotli compression
- 
-To Come:
- 
- - TLS/SSL
- - Proper daemonisation
+ - Automatic SSL (Lets Encrypt)
 
 ## Usage
 
@@ -27,23 +23,28 @@ Ensure go is installed (>1.16)
 - Run `chmod +x go-file-server`
 - Run `./go-file-server`
 
-Go file server also accepts two optional arguments:
+Go file server also accepts five optional arguments:
 
 - `--port=80`
 - `--filesPath=/your/folder/path`
+- `--production=true`
+- `--domain=www.example.com`
+- `--email=admin@example.com`
 
-These allow you to change the port the server serves from and allows you to set where your `files` folder lives
+These allow you to change the port the server serves from and allows you to set where your `files` folder lives,
+as well as configure domain and email for ssl certificate issue, and production to enable ssl usage.
 
 All there is left to do is point a domain at your server address and your in business!
 
 
-## Why Fiber?
+## Why Iris?
 
-I wanted a simple file server that just does its job as well as it can, and Fiber is a web framework for go
-that makes it real easy, adding the etag and compression middlewares was a snap, and it's built on top of
-fasthttp, the images show why this is a good thing!
+I wanted a simple file server that just does its job as well as it can, and Iris is a web framework for go
+that makes it real easy, adding the etag and compression functionality was easy.
 
-![](https://raw.githubusercontent.com/gofiber/docs/master/static/img/benchmark-pipeline.png)
+Iris is the fastest HTTP2 compatible golang web framework.
 
-![](https://raw.githubusercontent.com/gofiber/docs/master/static/img/benchmark_alloc.png)
+[Iris](https://www.iris-go.com/)
+[Github](https://github.com/kataras/iris)
 
+![](https://github.com/kataras/server-benchmarks)
