@@ -12,7 +12,7 @@ Features:
 
 ## Usage
 
-First off `git clone https://github.com/ronappleton/go-file-server.git` go-file-server
+First off `git clone https://github.com/ronappleton/go-file-server.git go-file-server`
 
 Ensure go is installed (>1.16)
  
